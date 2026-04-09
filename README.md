@@ -231,6 +231,10 @@ With Marrow:
 
 **Marrow tells you what went wrong last time before you do it again.**
 
+## Related Packages
+
+- **[@getmarrow/sdk](https://www.npmjs.com/package/@getmarrow/sdk)** — TypeScript/Node.js SDK for programmatic access to Marrow. Use this for custom agent integrations outside of MCP.
+
 ---
 
 ## License
