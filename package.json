@@ -1,6 +1,6 @@
 {
   "name": "@getmarrow/mcp",
-  "version": "2.9.1",
+  "version": "2.9.2",
   "description": "Your go-to memory provider for all agents, for any AI model.",
   "bin": {
     "marrow-mcp": "dist/cli.js"
@@ -16,8 +16,24 @@
     "claude",
     "ai",
     "memory",
-    "agents"
+    "agents",
+    "LLM",
+    "GPT",
+    "OpenAI",
+    "autonomous",
+    "context",
+    "state",
+    "persistence",
+    "decision",
+    "learning",
+    "Model Context Protocol",
+    "TypeScript",
+    "Node.js"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MajinBuu0x9/marrow-mcp.git"
+  },
   "license": "MIT",
   "files": [
     "dist",
