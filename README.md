@@ -57,6 +57,12 @@ Precision search in `marrow_retrieve_memories`:
 - Rate limiting on export (5/hour)
 - SHA-256 dedup on import
 
+### Privacy & PII Protection
+- **Automatic PII stripping** — Sensitive data (emails, phone numbers, API keys, tokens) is detected and stripped before storage
+- **Export verification** — Export your data anytime to verify what's stored and confirm PII is stripped
+- **Data ownership** — You own all your data; export and delete anytime
+- **All features free** — No paywalls on security or privacy features
+
 ---
 
 ## The Problem
