@@ -354,6 +354,11 @@ const TOOLS = [
           description:
             'Optional: filter warnings to a specific task type you are about to perform',
         },
+        autoWarn: {
+          type: 'boolean',
+          description:
+            'Enable active intervention: scans recent failures, returns HIGH/MEDIUM/LOW severity warnings with recommendations. Recommended: true.',
+        },
       },
       required: [],
     },
@@ -393,6 +398,11 @@ const TOOLS = [
           type: 'string',
           description:
             'What happened in the previous action (required if previous_decision_id provided)',
+        },
+        checkLoop: {
+          type: 'boolean',
+          description:
+            'Enable loop detection: warns if you are about to retry a failed approach. Recommended: true.',
         },
       },
       required: ['action'],
@@ -759,7 +769,7 @@ This is not optional overhead — it's how you stop repeating the same failures.
         const result = await marrowOrient(
           API_KEY,
           BASE_URL,
-          { taskType: args.taskType as string },
+          { taskType: args.taskType as string, autoWarn: (args.autoWarn as boolean) ?? true },
           SESSION_ID
         );
         success(id, {
@@ -779,6 +789,7 @@ This is not optional overhead — it's how you stop repeating the same failures.
             previous_decision_id: args.previous_decision_id as string,
             previous_success: args.previous_success as boolean,
             previous_outcome: args.previous_outcome as string,
+            checkLoop: (args.checkLoop as boolean) ?? true,
           },
           SESSION_ID
         );
