@@ -87,6 +87,16 @@ export interface MarrowAskResult {
   decisions_matched: number;
 }
 
+export interface MarrowMemory {
+  id: string;
+  text: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  source: string | null;
+  tags: string[];
+}
+
 export interface OrientResult {
   warnings: Array<{
     type: string;
