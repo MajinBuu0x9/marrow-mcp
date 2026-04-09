@@ -36,7 +36,7 @@ Precision search in `marrow_retrieve_memories`:
 - `marrow_get_memory` — Get single memory by ID
 - `marrow_update_memory` — Update memory text, tags, or metadata
 - `marrow_mark_outdated` — Mark memory as outdated
-- `marrow_supersede` — Atomically replace memory with new version
+- `marrow_supersede_memory` — Atomically replace memory with new version
 - `marrow_delete_memory` — Soft delete memory
 - `marrow_export_memories` — Export to JSON or CSV
 - `marrow_import_memories` — Import memories
@@ -52,17 +52,187 @@ Precision search in `marrow_retrieve_memories`:
 
 ---
 
-## What's New in v2.7.0
+## The Problem
 
-- **Portability audit** — zero workspace coupling confirmed. No `OPENCLAW_*` env vars, no private paths, no agent-name assumptions.
-- **Session identity** — `MARROW_SESSION_ID` and `X-Marrow-Session-Id` header for multi-agent/multi-user setups
-- **`marrow-always-on` prompt** — install once in your MCP client for automatic orient → think → commit behavior
-- **TypeScript clean** — `tsc --noEmit` zero errors
+Most agents still operate with shallow memory.
 
-## What's New in v2.6.0
+They might keep a short context window, maybe write a note or two, then lose the important part:
+- what they were trying to do
+- what they actually did
+- whether it worked
+- what pattern that should teach the next run
 
-- **`marrow_run` tool** — single-call memory logging. Pass description + success + outcome. Marrow handles orient → think → commit internally.
-- **`MARROW_SESSION_ID` env var** — tag all requests with a session identifier
-- **Auto-commit on session close** — if session ends with an open loop, Marrow commits automatically
-- **Orient warnings in think response** — startup warnings now surface in `marrow_think` intelligence, not just stderr
+That creates a familiar failure loop:
+- the same mistakes repeat
+- work gets marked done without structured outcome memory
+- agents drift between sessions
+- hosts have no clean way to inspect whether the work loop is actually closed
 
+**Marrow fixes this.**
+
+Through MCP, your agent can:
+- orient at session start
+- log intent before meaningful action
+- inspect loop state before handoff or completion
+- commit outcomes back to memory cleanly
+
+---
+
+## How It Works
+
+Marrow exposes a simple operating loop through MCP:
+
+```text
+orient -> think -> act -> check -> commit
+```
+
+That gives agents an actual memory discipline:
+- **orient** → pick up recent lessons and current loop state
+- **think** → log intent and receive decision intelligence
+- **act** → perform the meaningful work
+- **check** → inspect whether the loop is still open or missing something
+- **commit** → log the outcome and close the loop
+
+---
+
+## Install
+
+Run it directly with `npx`:
+
+```bash
+npx @getmarrow/mcp
+```
+
+Or register it in your MCP client config.
+
+---
+
+## MCP Tools
+
+### Core Loop Tools
+
+#### `marrow_orient`
+**Call this first** at session start. Returns failure warnings from your history so you avoid known mistakes immediately.
+
+#### `marrow_think`
+Log intent before meaningful action. Returns pattern insights, similar past decisions, and a recommended next step.
+
+#### `marrow_commit`
+Log the outcome after acting. Closes the decision loop.
+
+#### `marrow_run`
+Zero-ceremony wrapper. Handles orient → think → commit in a single call.
+
+#### `marrow_auto`
+Fire-and-forget logging. Pass what you're about to do (and optionally the outcome). Marrow handles everything in the background.
+
+### Memory Management Tools
+
+#### `marrow_list_memories`
+List memories with optional filters:
+- `status` — Filter by status (active, outdated, deleted)
+- `query` — Search query
+- `limit` — Max results
+- `agentId` — Include memories shared with this agent
+
+#### `marrow_get_memory`
+Get a single memory by ID.
+
+#### `marrow_update_memory`
+Update memory text, tags, or metadata.
+
+#### `marrow_delete_memory`
+Soft delete a memory.
+
+#### `marrow_mark_outdated`
+Mark a memory as outdated.
+
+#### `marrow_supersede_memory`
+Atomically replace a memory with a new version.
+
+#### `marrow_share_memory`
+Share a memory with specific agents.
+
+#### `marrow_export_memories`
+Export memories to JSON or CSV format.
+
+#### `marrow_import_memories`
+Import memories with merge (dedup) or replace mode.
+
+#### `marrow_retrieve_memories`
+Full-text search with filters:
+- `query` — Search query (required)
+- `limit` — Max results
+- `from` / `to` — Date range (ISO-8601)
+- `tags` — Comma-separated tags
+- `source` — Source filter
+- `status` — Status filter
+- `shared` — Include shared memories
+
+### Query Tools
+
+#### `marrow_ask`
+Query the collective hive in plain English. Ask about failure patterns, what worked, what broke, or get a recommendation.
+
+#### `marrow_status`
+Check Marrow platform health and status.
+
+---
+
+## Claude Desktop Config
+
+```json
+{
+  "mcpServers": {
+    "marrow": {
+      "command": "npx",
+      "args": ["@getmarrow/mcp"],
+      "env": {
+        "MARROW_API_KEY": "mrw_your_api_key"
+      }
+    }
+  }
+}
+```
+
+---
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `MARROW_API_KEY` | Yes | Your API key from getmarrow.ai |
+| `MARROW_BASE_URL` | No | Custom API URL (default: `https://api.getmarrow.ai`) |
+| `MARROW_SESSION_ID` | No | Session identifier for multi-agent setups |
+
+---
+
+## The Always-On Prompt
+
+Marrow includes a built-in prompt called `marrow-always-on` that instructs agents to use Marrow automatically. Install it once and it works for every session.
+
+**To use:** In your MCP client, request the `marrow-always-on` prompt and include it in your system instructions.
+
+---
+
+## Why This Matters
+
+Without Marrow:
+- Agents repeat the same failures session after session
+- Successful patterns get lost when the context window clears
+- There's no structured trail of what was tried and what worked
+- Every new session starts from zero
+
+With Marrow:
+- Failure patterns surface before you repeat them
+- Successful outcomes compound across sessions
+- Every decision has a trail: intent → action → outcome
+- The hive gets smarter with every logged decision
+
+**Marrow tells you what went wrong last time before you do it again.**
+
+---
+
+## License
+
+MIT
