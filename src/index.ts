@@ -11,38 +11,24 @@ import type {
   MarrowAskResult,
 } from './types';
 
-async function request(
+function buildHeaders(
   apiKey: string,
-  baseUrl: string,
-  method: string,
-  path: string,
-  body?: unknown,
-  sessionId?: string
-): Promise<any> {
-  const url = `${baseUrl}${path}`;
+  sessionId?: string,
+  contentType?: string
+): Record<string, string> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
-    'Content-Type': 'application/json',
   };
-
+  if (contentType) {
+    headers['Content-Type'] = contentType;
+  }
   if (sessionId) {
-    headers['X-Marrow-Session-Id'] = sessionId;
+    const safe = sessionId.replace(/[^\x20-\x7E]/g, '').slice(0, 256);
+    if (safe) {
+      headers['X-Marrow-Session-Id'] = safe;
+    }
   }
-
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(
-      `Marrow API error: ${res.status} ${res.statusText} — ${error.error || error.message || 'Unknown error'}`
-    );
-  }
-
-  return res.json();
+  return headers;
 }
 
 /**
@@ -64,8 +50,11 @@ export async function marrowThink(
   const body: Record<string, unknown> = {
     action: params.action,
     type: params.type || 'general',
-    context: params.context,
   };
+
+  if (params.context) {
+    body.context = params.context;
+  }
 
   if (params.previous_decision_id) {
     body.previous_decision_id = params.previous_decision_id;
@@ -73,7 +62,18 @@ export async function marrowThink(
     body.previous_outcome = params.previous_outcome ?? '';
   }
 
-  return request(apiKey, baseUrl, 'POST', '/v1/agent/think', body, sessionId);
+  const res = await fetch(`${baseUrl}/v1/agent/think`, {
+    method: 'POST',
+    headers: buildHeaders(apiKey, sessionId, 'application/json'),
+    body: JSON.stringify(body),
+  });
+
+  const json = await res.json();
+  if (json.error) {
+    throw new Error(json.error);
+  }
+
+  return json.data;
 }
 
 /**
@@ -90,30 +90,18 @@ export async function marrowCommit(
   },
   sessionId?: string
 ): Promise<CommitResult> {
-  return request(
-    apiKey,
-    baseUrl,
-    'POST',
-    '/v1/agent/commit',
-    {
-      decision_id: params.decision_id,
-      success: params.success,
-      outcome: params.outcome,
-      caused_by: params.caused_by,
-    },
-    sessionId
-  );
-}
+  const res = await fetch(`${baseUrl}/v1/agent/commit`, {
+    method: 'POST',
+    headers: buildHeaders(apiKey, sessionId, 'application/json'),
+    body: JSON.stringify(params),
+  });
 
-/**
- * Get API health status.
- */
-export async function marrowStatus(
-  apiKey: string,
-  baseUrl: string,
-  sessionId?: string
-): Promise<StatusResult> {
-  return request(apiKey, baseUrl, 'GET', '/health', undefined, sessionId);
+  const json = await res.json();
+  if (json.error) {
+    throw new Error(json.error);
+  }
+
+  return json.data;
 }
 
 /**
@@ -126,17 +114,27 @@ export async function marrowAgentPatterns(
   sessionId?: string
 ): Promise<AgentPatternsResult> {
   const qs = new URLSearchParams();
-  if (params?.type) qs.set('type', params.type);
-  if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.type) {
+    qs.set('type', params.type);
+  }
+  if (params?.limit) {
+    qs.set('limit', String(params.limit));
+  }
 
-  return request(
-    apiKey,
-    baseUrl,
-    'GET',
-    `/v1/agent/patterns${qs.toString() ? '?' + qs.toString() : ''}`,
-    undefined,
-    sessionId
-  );
+  const url =
+    `${baseUrl}/v1/agent/patterns` +
+    (qs.toString() ? '?' + qs.toString() : '');
+
+  const res = await fetch(url, {
+    headers: buildHeaders(apiKey, sessionId),
+  });
+
+  const json = await res.json();
+  if (json.error) {
+    throw new Error(json.error);
+  }
+
+  return json.data;
 }
 
 /**
@@ -160,7 +158,7 @@ export async function marrowOrient(
     .map((p) => ({
       type: p.decision_type,
       failureRate: p.failure_rate,
-      message: `${p.decision_type} has ${Math.round(p.failure_rate * 100)}% failure rate over ${p.count} decisions`,
+      message: `${p.decision_type} has ${Math.round(p.failure_rate * 100)}% failure rate over ${p.count} decisions — review lessons before acting`,
     }));
 
   return {
@@ -178,5 +176,36 @@ export async function marrowAsk(
   params: { query: string },
   sessionId?: string
 ): Promise<MarrowAskResult> {
-  return request(apiKey, baseUrl, 'POST', '/v1/agent/ask', params, sessionId);
+  const res = await fetch(`${baseUrl}/v1/agent/ask`, {
+    method: 'POST',
+    headers: buildHeaders(apiKey, sessionId, 'application/json'),
+    body: JSON.stringify({ query: params.query }),
+  });
+
+  const json = await res.json();
+  if (json.error) {
+    throw new Error(json.error);
+  }
+
+  return json.data;
+}
+
+/**
+ * Get API health status.
+ */
+export async function marrowStatus(
+  apiKey: string,
+  baseUrl: string,
+  sessionId?: string
+): Promise<StatusResult> {
+  const res = await fetch(`${baseUrl}/v1/health`, {
+    headers: buildHeaders(apiKey, sessionId),
+  });
+
+  const json = await res.json();
+  if (json.error) {
+    throw new Error(json.error);
+  }
+
+  return json.data;
 }

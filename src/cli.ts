@@ -13,25 +13,19 @@ import {
   marrowAgentPatterns,
   marrowAsk,
 } from './index';
-import type { ThinkResult } from './types';
+import type { ThinkResult, OrientResult } from './types';
 
 const API_KEY = process.env.MARROW_API_KEY || '';
 const BASE_URL = process.env.MARROW_BASE_URL || 'https://api.getmarrow.ai';
 const SESSION_ID = process.env.MARROW_SESSION_ID || undefined;
 
 if (!API_KEY) {
-  process.stderr.write(
-    'Error: MARROW_API_KEY environment variable is required\n'
-  );
+  process.stderr.write('Error: MARROW_API_KEY environment variable is required\n');
   process.exit(1);
 }
 
 // Auto-orient on startup — cache warnings, inject into EVERY marrow_think response
-let cachedOrientWarnings: Array<{
-  type: string;
-  failureRate: number;
-  message: string;
-}> = [];
+let cachedOrientWarnings: Array<{ type: string; failureRate: number; message: string }> = [];
 let thinkCallCount = 0;
 
 // Pending decision map for marrow_auto (action hash → decision_id)
@@ -62,11 +56,7 @@ function cleanupPending(): void {
   }
 }
 
-function formatWarningActionably(w: {
-  type: string;
-  failureRate: number;
-  message: string;
-}): string {
+function formatWarningActionably(w: { type: string; failureRate: number; message: string }): string {
   const pct = Math.round(w.failureRate * 100);
   return `⚠️ ${w.type} has ${pct}% failure rate — check what went wrong last time before proceeding`;
 }
@@ -230,8 +220,85 @@ const TOOLS = [
     },
   },
   {
+    name: 'marrow_run',
+    description:
+      'Zero-ceremony memory logging. Single call handles orient → think → commit automatically. ' +
+      'Use this instead of chaining marrow_think + marrow_commit when you want Marrow to just work without managing the loop yourself.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        description: {
+          type: 'string',
+          description: 'What the agent did',
+        },
+        success: {
+          type: 'boolean',
+          description: 'Whether it succeeded',
+        },
+        outcome: {
+          type: 'string',
+          description: 'One-line summary of what happened',
+        },
+        type: {
+          type: 'string',
+          enum: ['implementation', 'security', 'architecture', 'process', 'general'],
+          description: 'Type of action (default: general)',
+        },
+      },
+      required: ['description', 'success', 'outcome'],
+    },
+  },
+  {
+    name: 'marrow_auto',
+    description:
+      'Zero-friction Marrow logging. One call for any action — Marrow handles everything in the background without blocking. ' +
+      'Pass what you are about to do. Optionally pass outcome if already done. ' +
+      'Use for ANY action: deploys, file writes, API calls, external sends. ' +
+      'If you only have time for one call: pass action + outcome + success together — done in one shot.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          description: 'What you are about to do or just did',
+        },
+        outcome: {
+          type: 'string',
+          description: 'What happened (if already done). Omit to log intent only.',
+        },
+        success: {
+          type: 'boolean',
+          description: 'Did it succeed (default: true)',
+        },
+        type: {
+          type: 'string',
+          enum: ['implementation', 'security', 'architecture', 'process', 'general'],
+          description: 'Type of action (default: general)',
+        },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'marrow_ask',
+    description:
+      'Query the collective hive in plain English. ' +
+      'Ask about failure patterns, what worked, what broke, or get a recommendation before acting. ' +
+      'Returns direct answer + supporting evidence.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Plain English question about your decision history',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'marrow_status',
-    description: 'Check Marrow API health status.',
+    description: 'Check Marrow platform health and status.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -240,33 +307,122 @@ const TOOLS = [
   },
 ];
 
-async function handleToolsList(id: string | number): Promise<void> {
-  success(id, { tools: TOOLS });
-}
-
-async function handleToolsCall(
-  id: string | number,
-  name: string,
-  args: Record<string, unknown>
-): Promise<void> {
+// Request handler
+async function handleRequest(req: {
+  id: string | number;
+  method: string;
+  params?: { name?: string; arguments?: Record<string, unknown> };
+}): Promise<void> {
+  const { id, method, params } = req;
   try {
-    let result: unknown;
+    if (method === 'initialize') {
+      success(id, {
+        protocolVersion: '2024-11-05',
+        capabilities: { tools: {}, prompts: {} },
+        serverInfo: { name: 'marrow', version: '2.8.0' },
+      });
+      return;
+    }
 
-    switch (name) {
-      case 'marrow_orient': {
-        const taskType = args.taskType as string | undefined;
-        result = await marrowOrient(API_KEY, BASE_URL, taskType ? { taskType } : undefined, SESSION_ID);
-        break;
+    if (method === 'prompts/list') {
+      success(id, {
+        prompts: [
+          {
+            name: 'marrow-always-on',
+            description:
+              'Always-on Marrow memory loop. Instructs the agent to orient at session start, log intent before meaningful actions, and commit outcomes after completion. Install once — works automatically.',
+            arguments: [],
+          },
+        ],
+      });
+      return;
+    }
+
+    if (method === 'prompts/get') {
+      const promptName = params?.name;
+      if (promptName !== 'marrow-always-on') {
+        error(id, -32602, 'Unknown prompt');
+        return;
+      }
+      success(id, {
+        description: 'Always-on Marrow memory loop — automatic, zero-config',
+        messages: [
+          {
+            role: 'user',
+            content: {
+              type: 'text',
+              text: `You have Marrow — a memory layer that tells you what went wrong last time before you do it again.
+
+## PRIMARY: Use marrow_auto for everything
+
+One tool. Two calls max. Zero loop management.
+
+The minimum loop:
+1. Before any external action: \`marrow_auto({ action: "...what you are about to do" })\`
+2. After the action: \`marrow_auto({ action: "...", outcome: "...what happened", success: true/false })\`
+
+If you only have time for one call: \`marrow_auto({ action: "did X", outcome: "result", success: true })\` — that's the whole loop.
+
+You never need think + commit separately. \`marrow_auto\` handles everything.
+
+All Marrow API calls run in the background — \`marrow_auto\` returns instantly with cached warnings so you never wait.
+
+## Query the hive
+
+Use marrow_ask to query your decision history in plain English:
+- "what keeps breaking our deploys?"
+- "what's our failure rate on security tasks?"
+- "what worked last time we published?"
+
+## Advanced mode: fine-grained control
+
+For cases where you need explicit control over the orient → think → act → commit loop:
+
+1. **Session start:** Call marrow_orient FIRST. It surfaces failure warnings so you avoid known mistakes.
+2. **Before acting:** Call marrow_think with what you're about to do. Returns pattern insights and recommendedNext — follow it.
+3. **After acting:** Call marrow_commit with what happened.
+4. **Shortcut:** marrow_run handles orient → think → commit in a single awaited call.
+
+Most agents never need advanced mode. \`marrow_auto\` covers 99% of cases.
+
+## Why you must not skip this
+
+If you skip logging, the hive can't protect you or future agents from this mistake.
+Every decision you log compounds. Failure rates drop. Patterns emerge. The next session starts smarter.
+Marrow tells you what went wrong last time before you do it again. But only if you logged it.
+
+This is not optional overhead — it's how you stop repeating the same failures.`,
+            },
+          },
+        ],
+      });
+      return;
+    }
+
+    if (method === 'tools/list') {
+      success(id, { tools: TOOLS });
+      return;
+    }
+
+    if (method === 'tools/call') {
+      const toolName = params?.name;
+      const args = (params?.arguments || {}) as Record<string, unknown>;
+
+      if (toolName === 'marrow_orient') {
+        const result = await marrowOrient(
+          API_KEY,
+          BASE_URL,
+          { taskType: args.taskType as string },
+          SESSION_ID
+        );
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        });
+        return;
       }
 
-      case 'marrow_think': {
-        // Refresh warnings periodically (every 10 calls)
-        thinkCallCount++;
-        if (thinkCallCount % 10 === 0) {
-          refreshOrientWarnings();
-        }
-
-        const res = await marrowThink(
+      if (toolName === 'marrow_think') {
+        const result = await marrowThink(
           API_KEY,
           BASE_URL,
           {
@@ -278,12 +434,18 @@ async function handleToolsCall(
             previous_outcome: args.previous_outcome as string,
           },
           SESSION_ID
-        ) as ThinkResult;
+        );
 
-        // Inject orient warnings into intelligence.insights
+        // Refresh orient warnings every 5th think call
+        thinkCallCount++;
+        if (thinkCallCount % 5 === 0) {
+          refreshOrientWarnings();
+        }
+
+        // Inject cached orient warnings into intelligence.insights
         if (cachedOrientWarnings.length > 0) {
-          const existingInsights = res.intelligence?.insights || [];
-          res.intelligence.insights = [
+          const existingInsights = result.intelligence?.insights || [];
+          result.intelligence.insights = [
             ...cachedOrientWarnings.map((w) => ({
               type: 'failure_pattern' as const,
               summary: w.message,
@@ -298,15 +460,17 @@ async function handleToolsCall(
         }
 
         // Track for auto-commit
-        lastDecisionId = res.decision_id;
+        lastDecisionId = result.decision_id;
         lastCommitted = false;
 
-        result = res;
-        break;
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        });
+        return;
       }
 
-      case 'marrow_commit': {
-        const res = await marrowCommit(
+      if (toolName === 'marrow_commit') {
+        const result = await marrowCommit(
           API_KEY,
           BASE_URL,
           {
@@ -319,38 +483,135 @@ async function handleToolsCall(
         );
         lastCommitted = true;
         lastDecisionId = null;
-        result = res;
-        break;
-      }
-
-      case 'marrow_status': {
-        result = await marrowStatus(API_KEY, BASE_URL, SESSION_ID);
-        break;
-      }
-
-      default:
-        error(id, -32601, `Method not found: ${name}`);
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        });
         return;
+      }
+
+      if (toolName === 'marrow_run') {
+        // marrow_run = orient + think + commit in one call
+        await marrowOrient(API_KEY, BASE_URL, undefined, SESSION_ID);
+        const thinkResult = await marrowThink(
+          API_KEY,
+          BASE_URL,
+          {
+            action: args.description as string,
+            type: (args.type as string) || 'general',
+          },
+          SESSION_ID
+        );
+        const commitResult = await marrowCommit(
+          API_KEY,
+          BASE_URL,
+          {
+            decision_id: thinkResult.decision_id,
+            success: (args.success as boolean) ?? true,
+            outcome: args.outcome as string,
+          },
+          SESSION_ID
+        );
+        success(id, {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                { think: thinkResult, commit: commitResult },
+                null,
+                2
+              ),
+            },
+          ],
+        });
+        return;
+      }
+
+      if (toolName === 'marrow_auto') {
+        // marrow_auto = fire-and-forget background logging
+        // Return immediately with cached orient warnings, API calls happen in background
+        const action = args.action as string;
+        const outcome = args.outcome as string | undefined;
+        const success = (args.success as boolean) ?? true;
+        const type = (args.type as string) || 'general';
+
+        // Return cached warnings immediately
+        const response = {
+          action,
+          outcome: outcome || 'pending',
+          warnings: cachedOrientWarnings.map(formatWarningActionably),
+        };
+
+        // Fire-and-forget the actual API calls
+        (async () => {
+          try {
+            if (!outcome) {
+              // Intent only
+              await marrowThink(
+                API_KEY,
+                BASE_URL,
+                { action, type },
+                SESSION_ID
+              );
+            } else {
+              // Full loop
+              const thinkResult = await marrowThink(
+                API_KEY,
+                BASE_URL,
+                { action, type },
+                SESSION_ID
+              );
+              await marrowCommit(
+                API_KEY,
+                BASE_URL,
+                {
+                  decision_id: thinkResult.decision_id,
+                  success,
+                  outcome,
+                },
+                SESSION_ID
+              );
+            }
+          } catch {
+            // Silently fail — auto is best-effort
+          }
+        })();
+
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
+        });
+        return;
+      }
+
+      if (toolName === 'marrow_ask') {
+        const result = await marrowAsk(
+          API_KEY,
+          BASE_URL,
+          { query: args.query as string },
+          SESSION_ID
+        );
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        });
+        return;
+      }
+
+      if (toolName === 'marrow_status') {
+        const result = await marrowStatus(API_KEY, BASE_URL, SESSION_ID);
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        });
+        return;
+      }
+
+      error(id, -32601, `Method not found: ${toolName}`);
+      return;
     }
 
-    success(id, result);
+    error(id, -32601, `Method not found: ${method}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     error(id, -32000, message);
   }
-}
-
-async function handleInitialize(id: string | number): Promise<void> {
-  success(id, {
-    protocolVersion: '2024-11-05',
-    capabilities: {
-      tools: {},
-    },
-    serverInfo: {
-      name: 'marrow-mcp',
-      version: '2.8.0',
-    },
-  });
 }
 
 // MCP stdio loop
@@ -362,27 +623,7 @@ const rl = readline.createInterface({
 rl.on('line', async (line) => {
   try {
     const msg = JSON.parse(line);
-
-    switch (msg.method) {
-      case 'initialize':
-        await handleInitialize(msg.id);
-        break;
-
-      case 'tools/list':
-        await handleToolsList(msg.id);
-        break;
-
-      case 'tools/call':
-        await handleToolsCall(
-          msg.id,
-          msg.params?.name,
-          msg.params?.arguments || {}
-        );
-        break;
-
-      default:
-        error(msg.id, -32601, `Method not found: ${msg.method}`);
-    }
+    await handleRequest(msg);
   } catch (err) {
     process.stderr.write(`[marrow] Parse error: ${err}\n`);
   }
