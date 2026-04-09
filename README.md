@@ -29,7 +29,7 @@ The `marrow_orient` tool now accepts `autoWarn: true` and warns you BEFORE you s
   "name": "marrow_orient",
   "arguments": {
     "autoWarn": true,
-    "task": "Fix Neutron API authentication"
+    "task": "Fix authentication error"
   }
 }
 ```
