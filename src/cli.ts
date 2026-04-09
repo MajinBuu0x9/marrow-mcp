@@ -13,7 +13,7 @@ import {
   marrowAgentPatterns,
   marrowAsk,
 } from './index';
-import type { ThinkResult, OrientResult } from './types';
+import type { ThinkResult, OrientResult, MarrowMemory } from './types';
 
 const API_KEY = process.env.MARROW_API_KEY || '';
 const BASE_URL = process.env.MARROW_BASE_URL || 'https://api.getmarrow.ai';
@@ -126,6 +126,214 @@ function success(id: string | number, result: unknown): void {
 
 function error(id: string | number, code: number, message: string): void {
   send({ jsonrpc: '2.0', id, error: { code, message } });
+}
+
+// Memory API functions
+async function marrowListMemories(
+  apiKey: string,
+  baseUrl: string,
+  params?: { status?: string; query?: string; limit?: number; agentId?: string },
+  sessionId?: string
+): Promise<MarrowMemory[]> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.query) qs.set('query', params.query);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.agentId) qs.set('agent_id', params.agentId);
+
+  const res = await fetch(`${baseUrl}/v1/memories?${qs.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      ...(sessionId ? { 'X-Marrow-Session-Id': sessionId } : {}),
+    },
+  });
+  const json: any = await res.json();
+  return json.data?.memories || [];
+}
+
+async function marrowGetMemory(
+  apiKey: string,
+  baseUrl: string,
+  id: string,
+  sessionId?: string
+): Promise<MarrowMemory | null> {
+  const res = await fetch(`${baseUrl}/v1/memories/${id}`, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      ...(sessionId ? { 'X-Marrow-Session-Id': sessionId } : {}),
+    },
+  });
+  const json: any = await res.json();
+  return json.data?.memory || null;
+}
+
+async function marrowUpdateMemory(
+  apiKey: string,
+  baseUrl: string,
+  id: string,
+  patch: { text?: string; source?: string | null; tags?: string[]; actor?: string; note?: string },
+  sessionId?: string
+): Promise<MarrowMemory> {
+  const res = await fetch(`${baseUrl}/v1/memories/${id}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      ...(sessionId ? { 'X-Marrow-Session-Id': sessionId } : {}),
+    },
+    body: JSON.stringify(patch),
+  });
+  const json: any = await res.json();
+  return json.data.memory;
+}
+
+async function marrowDeleteMemory(
+  apiKey: string,
+  baseUrl: string,
+  id: string,
+  meta?: { actor?: string; note?: string },
+  sessionId?: string
+): Promise<MarrowMemory> {
+  const res = await fetch(`${baseUrl}/v1/memories/${id}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      ...(sessionId ? { 'X-Marrow-Session-Id': sessionId } : {}),
+    },
+    body: JSON.stringify(meta || {}),
+  });
+  const json: any = await res.json();
+  return json.data.memory;
+}
+
+async function marrowMarkOutdated(
+  apiKey: string,
+  baseUrl: string,
+  id: string,
+  meta?: { actor?: string; note?: string },
+  sessionId?: string
+): Promise<MarrowMemory> {
+  const res = await fetch(`${baseUrl}/v1/memories/${id}/outdated`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      ...(sessionId ? { 'X-Marrow-Session-Id': sessionId } : {}),
+    },
+    body: JSON.stringify(meta || {}),
+  });
+  const json: any = await res.json();
+  return json.data.memory;
+}
+
+async function marrowSupersedeMemory(
+  apiKey: string,
+  baseUrl: string,
+  id: string,
+  replacement: { text: string; source?: string; tags?: string[]; actor?: string; note?: string },
+  sessionId?: string
+): Promise<{ old: MarrowMemory; replacement: MarrowMemory }> {
+  const res = await fetch(`${baseUrl}/v1/memories/${id}/supersede`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      ...(sessionId ? { 'X-Marrow-Session-Id': sessionId } : {}),
+    },
+    body: JSON.stringify(replacement),
+  });
+  const json: any = await res.json();
+  return json.data;
+}
+
+async function marrowShareMemory(
+  apiKey: string,
+  baseUrl: string,
+  id: string,
+  agentIds: string[],
+  actor?: string,
+  sessionId?: string
+): Promise<MarrowMemory> {
+  const res = await fetch(`${baseUrl}/v1/memories/${id}/share`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      ...(sessionId ? { 'X-Marrow-Session-Id': sessionId } : {}),
+    },
+    body: JSON.stringify({ agent_ids: agentIds, actor }),
+  });
+  const json: any = await res.json();
+  return json.data.memory;
+}
+
+async function marrowExportMemories(
+  apiKey: string,
+  baseUrl: string,
+  params?: { format?: string; status?: string; tags?: string },
+  sessionId?: string
+): Promise<{ exported_at: string; account_id: string; count: number; memories: MarrowMemory[] }> {
+  const qs = new URLSearchParams();
+  if (params?.format) qs.set('format', params.format);
+  if (params?.status) qs.set('status', params.status);
+  if (params?.tags) qs.set('tags', params.tags);
+
+  const res = await fetch(`${baseUrl}/v1/memories/export?${qs.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      ...(sessionId ? { 'X-Marrow-Session-Id': sessionId } : {}),
+    },
+  });
+  const json: any = await res.json();
+  return json.data;
+}
+
+async function marrowImportMemories(
+  apiKey: string,
+  baseUrl: string,
+  memories: Array<{ text: string; source?: string; tags?: string[] }>,
+  mode: 'merge' | 'replace',
+  sessionId?: string
+): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  const res = await fetch(`${baseUrl}/v1/memories/import`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      ...(sessionId ? { 'X-Marrow-Session-Id': sessionId } : {}),
+    },
+    body: JSON.stringify({ memories, mode }),
+  });
+  const json: any = await res.json();
+  return json.data;
+}
+
+async function marrowRetrieveMemories(
+  apiKey: string,
+  baseUrl: string,
+  query: string,
+  params?: { limit?: number; from?: string; to?: string; tags?: string; source?: string; status?: string; shared?: boolean },
+  sessionId?: string
+): Promise<{ memories: MarrowMemory[]; query: string; count: number }> {
+  const qs = new URLSearchParams();
+  qs.set('q', query);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.from) qs.set('from', params.from);
+  if (params?.to) qs.set('to', params.to);
+  if (params?.tags) qs.set('tags', params.tags);
+  if (params?.source) qs.set('source', params.source);
+  if (params?.status) qs.set('status', params.status);
+  if (params?.shared !== undefined) qs.set('shared', String(params.shared));
+
+  const res = await fetch(`${baseUrl}/v1/memories/retrieve?${qs.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      ...(sessionId ? { 'X-Marrow-Session-Id': sessionId } : {}),
+    },
+  });
+  const json: any = await res.json();
+  return json.data;
 }
 
 // Tool definitions
@@ -303,6 +511,145 @@ const TOOLS = [
       type: 'object',
       properties: {},
       required: [],
+    },
+  },
+  {
+    name: 'marrow_list_memories',
+    description: 'List memories with optional filters (status, query, limit, agent_id for shared memories).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['active', 'outdated', 'deleted'], description: 'Filter by status' },
+        query: { type: 'string', description: 'Search query' },
+        limit: { type: 'number', description: 'Max results (default: 20)' },
+        agentId: { type: 'string', description: 'Agent ID for shared memories' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'marrow_get_memory',
+    description: 'Get a single memory by ID.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Memory ID' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'marrow_update_memory',
+    description: 'Update memory text, tags, or metadata.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Memory ID' },
+        text: { type: 'string', description: 'New text' },
+        source: { type: 'string', description: 'Source' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Tags' },
+        actor: { type: 'string', description: 'Actor name' },
+        note: { type: 'string', description: 'Audit note' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'marrow_delete_memory',
+    description: 'Soft delete a memory.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Memory ID' },
+        actor: { type: 'string', description: 'Actor name' },
+        note: { type: 'string', description: 'Audit note' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'marrow_mark_outdated',
+    description: 'Mark a memory as outdated.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Memory ID' },
+        actor: { type: 'string', description: 'Actor name' },
+        note: { type: 'string', description: 'Audit note' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'marrow_supersede_memory',
+    description: 'Atomically replace a memory with a new version.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Memory ID to supersede' },
+        text: { type: 'string', description: 'New memory text' },
+        source: { type: 'string', description: 'Source' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Tags' },
+        actor: { type: 'string', description: 'Actor name' },
+        note: { type: 'string', description: 'Audit note' },
+      },
+      required: ['id', 'text'],
+    },
+  },
+  {
+    name: 'marrow_share_memory',
+    description: 'Share a memory with specific agents.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Memory ID' },
+        agentIds: { type: 'array', items: { type: 'string' }, description: 'Agent IDs to share with' },
+        actor: { type: 'string', description: 'Actor name' },
+      },
+      required: ['id', 'agentIds'],
+    },
+  },
+  {
+    name: 'marrow_export_memories',
+    description: 'Export memories to JSON or CSV.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        format: { type: 'string', enum: ['json', 'csv'], description: 'Export format' },
+        status: { type: 'string', enum: ['active', 'all'], description: 'Filter by status' },
+        tags: { type: 'string', description: 'Comma-separated tags' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'marrow_import_memories',
+    description: 'Import memories with merge (dedup) or replace mode.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        memories: { type: 'array', items: { type: 'object', properties: { text: { type: 'string' }, source: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } } } }, description: 'Memories to import' },
+        mode: { type: 'string', enum: ['merge', 'replace'], description: 'Import mode' },
+      },
+      required: ['memories', 'mode'],
+    },
+  },
+  {
+    name: 'marrow_retrieve_memories',
+    description: 'Full-text search memories with filters (from, to, tags, source, status, shared).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query' },
+        limit: { type: 'number', description: 'Max results' },
+        from: { type: 'string', description: 'From date (ISO-8601)' },
+        to: { type: 'string', description: 'To date (ISO-8601)' },
+        tags: { type: 'string', description: 'Comma-separated tags' },
+        source: { type: 'string', description: 'Source filter' },
+        status: { type: 'string', enum: ['active', 'outdated', 'deleted'], description: 'Status filter' },
+        shared: { type: 'boolean', description: 'Include shared memories' },
+      },
+      required: ['query'],
     },
   },
 ];
@@ -531,7 +878,7 @@ This is not optional overhead — it's how you stop repeating the same failures.
         // Return immediately with cached orient warnings, API calls happen in background
         const action = args.action as string;
         const outcome = args.outcome as string | undefined;
-        const success = (args.success as boolean) ?? true;
+        const outcomeSuccess = (args.success as boolean) ?? true;
         const type = (args.type as string) || 'general';
 
         // Return cached warnings immediately
@@ -565,14 +912,14 @@ This is not optional overhead — it's how you stop repeating the same failures.
                 BASE_URL,
                 {
                   decision_id: thinkResult.decision_id,
-                  success,
+                  success: outcomeSuccess,
                   outcome,
                 },
                 SESSION_ID
               );
             }
           } catch {
-            // Silently fail — auto is best-effort
+            // Silently fail - auto is best-effort
           }
         })();
 
@@ -597,6 +944,174 @@ This is not optional overhead — it's how you stop repeating the same failures.
 
       if (toolName === 'marrow_status') {
         const result = await marrowStatus(API_KEY, BASE_URL, SESSION_ID);
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        });
+        return;
+      }
+
+      // Memory control tools
+      if (toolName === 'marrow_list_memories') {
+        const result = await marrowListMemories(
+          API_KEY,
+          BASE_URL,
+          {
+            status: args.status as string,
+            query: args.query as string,
+            limit: args.limit as number,
+            agentId: args.agentId as string,
+          },
+          SESSION_ID
+        );
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        });
+        return;
+      }
+
+      if (toolName === 'marrow_get_memory') {
+        const result = await marrowGetMemory(
+          API_KEY,
+          BASE_URL,
+          args.id as string,
+          SESSION_ID
+        );
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        });
+        return;
+      }
+
+      if (toolName === 'marrow_update_memory') {
+        const result = await marrowUpdateMemory(
+          API_KEY,
+          BASE_URL,
+          args.id as string,
+          {
+            text: args.text as string,
+            source: args.source as string | null,
+            tags: args.tags as string[],
+            actor: args.actor as string,
+            note: args.note as string,
+          },
+          SESSION_ID
+        );
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        });
+        return;
+      }
+
+      if (toolName === 'marrow_delete_memory') {
+        const result = await marrowDeleteMemory(
+          API_KEY,
+          BASE_URL,
+          args.id as string,
+          { actor: args.actor as string, note: args.note as string },
+          SESSION_ID
+        );
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        });
+        return;
+      }
+
+      if (toolName === 'marrow_mark_outdated') {
+        const result = await marrowMarkOutdated(
+          API_KEY,
+          BASE_URL,
+          args.id as string,
+          { actor: args.actor as string, note: args.note as string },
+          SESSION_ID
+        );
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        });
+        return;
+      }
+
+      if (toolName === 'marrow_supersede_memory') {
+        const result = await marrowSupersedeMemory(
+          API_KEY,
+          BASE_URL,
+          args.id as string,
+          {
+            text: args.text as string,
+            source: args.source as string,
+            tags: args.tags as string[],
+            actor: args.actor as string,
+            note: args.note as string,
+          },
+          SESSION_ID
+        );
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        });
+        return;
+      }
+
+      if (toolName === 'marrow_share_memory') {
+        const result = await marrowShareMemory(
+          API_KEY,
+          BASE_URL,
+          args.id as string,
+          (args.agentIds as string[]) || [],
+          args.actor as string,
+          SESSION_ID
+        );
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        });
+        return;
+      }
+
+      if (toolName === 'marrow_export_memories') {
+        const result = await marrowExportMemories(
+          API_KEY,
+          BASE_URL,
+          {
+            format: args.format as string,
+            status: args.status as string,
+            tags: args.tags as string,
+          },
+          SESSION_ID
+        );
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        });
+        return;
+      }
+
+      if (toolName === 'marrow_import_memories') {
+        const result = await marrowImportMemories(
+          API_KEY,
+          BASE_URL,
+          (args.memories as Array<{ text: string; source?: string; tags?: string[] }>) || [],
+          (args.mode as 'merge' | 'replace') || 'merge',
+          SESSION_ID
+        );
+        success(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        });
+        return;
+      }
+
+      if (toolName === 'marrow_retrieve_memories') {
+        const result = await marrowRetrieveMemories(
+          API_KEY,
+          BASE_URL,
+          args.query as string,
+          {
+            limit: args.limit as number,
+            from: args.from as string,
+            to: args.to as string,
+            tags: args.tags as string,
+            source: args.source as string,
+            status: args.status as string,
+            shared: args.shared as boolean,
+          },
+          SESSION_ID
+        );
         success(id, {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
         });

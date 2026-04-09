@@ -68,7 +68,7 @@ export async function marrowThink(
     body: JSON.stringify(body),
   });
 
-  const json = await res.json();
+  const json: any = await res.json();
   if (json.error) {
     throw new Error(json.error);
   }
@@ -96,7 +96,7 @@ export async function marrowCommit(
     body: JSON.stringify(params),
   });
 
-  const json = await res.json();
+  const json: any = await res.json();
   if (json.error) {
     throw new Error(json.error);
   }
@@ -129,7 +129,7 @@ export async function marrowAgentPatterns(
     headers: buildHeaders(apiKey, sessionId),
   });
 
-  const json = await res.json();
+  const json: any = await res.json();
   if (json.error) {
     throw new Error(json.error);
   }
@@ -182,7 +182,7 @@ export async function marrowAsk(
     body: JSON.stringify({ query: params.query }),
   });
 
-  const json = await res.json();
+  const json: any = await res.json();
   if (json.error) {
     throw new Error(json.error);
   }
@@ -202,7 +202,7 @@ export async function marrowStatus(
     headers: buildHeaders(apiKey, sessionId),
   });
 
-  const json = await res.json();
+  const json: any = await res.json();
   if (json.error) {
     throw new Error(json.error);
   }
