@@ -17,7 +17,7 @@ With `@getmarrow/mcp`, any MCP-compatible client can log intent before acting, i
 
 ---
 
-## What's New in v2.8.0
+## What's New in v2.9.2
 
 **Backend API Enhancements** — New MCP tools for memory lifecycle management:
 
