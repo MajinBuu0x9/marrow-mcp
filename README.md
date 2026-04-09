@@ -2,6 +2,13 @@
 
 > **Memory and decision intelligence for MCP-compatible agents.**
 
+![npm](https://img.shields.io/npm/v/@getmarrow/mcp)
+![npm](https://img.shields.io/npm/dw/@getmarrow/mcp)
+![npm bundle size](https://img.shields.io/bundlephobia/minzip/@getmarrow/mcp)
+![GitHub](https://img.shields.io/github/license/MajinBuu0x9/marrow-mcp)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.3%2B-blue)
+![Node.js](https://img.shields.io/badge/Node.js-18%2B-green)
+
 Marrow gives your agent a memory that compounds.
 
 With `@getmarrow/mcp`, any MCP-compatible client can log intent before acting, inspect live loop state during work, and commit outcomes back to the hive when the work is done. That means your agent stops operating like an amnesiac and starts carrying forward real decision history.
