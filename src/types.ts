@@ -37,6 +37,22 @@ export interface ThinkResult {
   previous_committed?: boolean;
   sanitized?: boolean;
   upgrade_hint?: { message: string; tier: string; url: string };
+  loop_warnings?: Array<{
+    type: 'LOOP_DETECTED';
+    severity: 'CRITICAL' | 'HIGH' | 'MEDIUM';
+    message: string;
+    previousFailure: {
+      timestamp: string;
+      action: string;
+      outcome: string;
+      reason: string;
+    };
+    recommendation?: {
+      action: string;
+      successCount: number;
+      confidence: number;
+    };
+  }>;
 }
 
 export interface CommitResult {
@@ -103,5 +119,12 @@ export interface OrientResult {
     failureRate: number;
     message: string;
   }>;
+  serverWarnings?: Array<{
+    severity: 'HIGH' | 'MEDIUM' | 'LOW';
+    message: string;
+    pattern: string;
+    recommendation?: string;
+  }>;
+  loopState?: { isOpen: boolean; lastCommit: string | null };
   shouldPause: boolean;
 }
